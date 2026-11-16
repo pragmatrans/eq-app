@@ -2,6 +2,8 @@ package ua.pp.audioeq;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.media.AudioDeviceCallback;
+import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.media.AudioPlaybackConfiguration;
 import android.media.audiofx.DynamicsProcessing;
@@ -67,6 +69,12 @@ public final class EqEngine {
         try {
             AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return;
+            // Перезапуск audioserver зносить усі ефекти й пере-додає аудіопристрої — ця подія
+            // і є сигналом «перевір живість». Та сама, що будить нас, коли встромили навушники.
+            am.registerAudioDeviceCallback(new AudioDeviceCallback() {
+                @Override public void onAudioDevicesAdded(AudioDeviceInfo[] added) { verify(); }
+                @Override public void onAudioDevicesRemoved(AudioDeviceInfo[] removed) { verify(); }
+            }, handler);
             am.registerAudioPlaybackCallback(new AudioManager.AudioPlaybackCallback() {
                 @Override public void onPlaybackConfigChanged(List<AudioPlaybackConfiguration> configs) {
                     // isActive() — прихований API (падає на targetSdk 34), тому не фільтруємо за
