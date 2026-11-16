@@ -10,6 +10,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import java.util.List;
+
 /**
  * Єдине місце, де живе ефект.
  *
