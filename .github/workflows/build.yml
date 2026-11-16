@@ -24,13 +24,15 @@ jobs:
           yes 2>/dev/null | "$CT/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           "$CT/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null || true
 
-      # Без цього кожен прогін генерує НОВИЙ debug-ключ, і наступне оновлення не ставиться
-      # поверх (INSTALL_FAILED_UPDATE_INCOMPATIBLE). Кеш тримає один ключ між прогонами.
-      - name: cache debug keystore
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: audioeq-debug-keystore-v1
+      # Фіксований ключ підпису з секрета. Без нього кожен прогін генерує свій debug-ключ,
+      # і оновлення не ставиться поверх (INSTALL_FAILED_UPDATE_INCOMPATIBLE).
+      - name: fixed keystore
+        env:
+          KS_B64: ${{ secrets.AUDIOEQ_KS_B64 }}
+        run: |
+          mkdir -p ~/.android
+          printf '%s' "$KS_B64" | base64 -d > ~/.android/debug.keystore
+          chmod 600 ~/.android/debug.keystore
 
       # Перша версія підписується debug-ключем: застосунок особистий, ставимо з adb,
       # у стор не йде. Якщо знадобляться оновлення поверх — зробимо власний keystore.
