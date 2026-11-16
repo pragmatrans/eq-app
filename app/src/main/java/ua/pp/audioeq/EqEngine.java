@@ -2,6 +2,8 @@ package ua.pp.audioeq;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.media.AudioManager;
+import android.media.AudioPlaybackConfiguration;
 import android.media.audiofx.DynamicsProcessing;
 import android.media.audiofx.Equalizer;
 import android.os.Handler;
@@ -19,8 +21,9 @@ import android.util.Log;
  *
  * Головна вимога — «не падає й не відвалюється»:
  *  - кожен виклик у try/catch, жодна помилка ефекту не вбиває процес;
- *  - сторож кожні 5 с перевіряє, що ефект живий і ввімкнений, і переприєднує його після
- *    перезапуску audioserver або втрати контролю;
+ *  - живість перевіряється **подією, а не таймером**: коли починається звук, коли застосунок
+ *    повертається на екран і коли ефект втрачає контроль. Ніяких періодичних записів — вони
+ *    витрачають ресурс флеш-памʼяті й будять пристрій у сні;
  *  - рівні зберігаються і повторно застосовуються після кожного переприєднання.
  */
 public final class EqEngine {
@@ -28,7 +31,6 @@ public final class EqEngine {
     private static final String TAG = "AudioEq";
     private static final String PREFS = "eq";
     private static final String KEY_LEVELS = "levels";
-    private static final long WATCHDOG_MS = 5000;
     private static final int BANDS = 6;
     /** Частоти смуг, Гц: від басу до повітря. */
     private static final float[] FREQS = {60f, 230f, 910f, 2300f, 5000f, 12000f};
@@ -50,12 +52,29 @@ public final class EqEngine {
         handler = new Handler(Looper.getMainLooper());
         loadLevels();
         attach();
-        handler.postDelayed(new Runnable() {
-            @Override public void run() {
-                tick();
-                handler.postDelayed(this, WATCHDOG_MS);
-            }
-        }, WATCHDOG_MS);
+        watchPlayback(ctx);
+    }
+
+    /**
+     * Подієвий сторож: прокидаємось, коли почався звук.
+     *
+     * Саме тоді ефект і буває мертвим (після перезапуску audioserver) — а не уві сні планшета.
+     * Тому жодного таймера: нуль записів, поки нічого не грає.
+     */
+    private static void watchPlayback(Context ctx) {
+        try {
+            AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return;
+            am.registerAudioPlaybackCallback(new AudioManager.AudioPlaybackCallback() {
+                @Override public void onPlaybackConfigChanged(List<AudioPlaybackConfiguration> configs) {
+                    for (AudioPlaybackConfiguration c : configs) {
+                        if (c.isActive()) { verify(); return; }
+                    }
+                }
+            }, handler);
+        } catch (Throwable t) {
+            Log.w(TAG, "watchPlayback: " + t);
+        }
     }
 
     private static void attach() {
@@ -75,6 +94,15 @@ public final class EqEngine {
                     false, 0,   // postEq
                     false);     // limiter
             DynamicsProcessing candidate = new DynamicsProcessing(0, 0, b.build());
+            try {
+                candidate.setControlStatusListener((effect, control) -> {
+                    if (!control) {               // хтось забрав контроль — вертаємо собі
+                        releaseQuietly();
+                        attach();
+                        notifyChanged();
+                    }
+                });
+            } catch (Throwable ignored) { }
             candidate.setEnabled(wanted);
             applyDynamics(candidate);
             dp = candidate;
@@ -133,35 +161,36 @@ public final class EqEngine {
     }
 
     /**
-     * Сторож: перевіряє живість ефекту ДІЛОМ, а не питанням.
+     * Перевірка живності — ОДИН запис, і лише по події.
      *
-     * Після перезапуску audioserver хендл стає мертвим, але `getEnabled()` цього не показує:
-     * він повертає закешоване значення й не кидає виняток. Єдине, що справді падає, — ЗАПИС
-     * параметра. Тому щотика перезаписуємо смуги: якщо хоч одна відмовила — ефект мертвий,
-     * переприєднуємось. Шість ідемпотентних записів раз на 5 с нічого не коштують, зате
-     * «відвалився й мовчить» стає неможливим.
+     * Після перезапуску audioserver хендл мертвий, але `getEnabled()` цього не показує: повертає
+     * закешоване значення. Падає тільки запис — тому пробуємо записати смуги й на відмові
+     * переприєднуємось. Викликається з onResume, з початку відтворення і з втрати контролю.
      */
-    private static synchronized void tick() {
+    static synchronized void verify() {
         try {
             if (dp == null && eqFallback == null) {
                 attach();
                 notifyChanged();
                 return;
             }
-            if (dp != null) {
-                if (wanted) dp.setEnabled(true);
-                applyDynamics(dp);              // проба живності = сам запис
-            } else {
-                if (wanted) eqFallback.setEnabled(true);
-                applyFallback();
+            if (wanted) {
+                if (dp != null) dp.setEnabled(true);
+                else eqFallback.setEnabled(true);
             }
+            applyLevelsToLive();
         } catch (Throwable t) {
-            // хендл мертвий (audioserver перезапустився або ефект знято системою)
-            Log.w(TAG, "сторож переприєднує: " + t);
+            Log.w(TAG, "ефект мертвий, переприєдную: " + t);
             releaseQuietly();
             attach();
             notifyChanged();
         }
+    }
+
+    /** Записати поточні рівні в живий ефект (без перевірок живності). */
+    private static void applyLevelsToLive() {
+        if (dp != null) applyDynamics(dp);
+        else applyFallback();
     }
 
     // ---- рівні ----

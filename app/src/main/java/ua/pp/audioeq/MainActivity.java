@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        EqEngine.verify();   // подія: повернулись на екран — одноразова проба живності
         rebuildBands();      // ефект міг переприєднатись, поки ми були у фоні
         refreshStatus();
     }
