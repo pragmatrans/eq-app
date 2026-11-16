@@ -132,29 +132,33 @@ public final class EqEngine {
         return db;
     }
 
-    /** Сторож: ефект живий? ввімкнений? після падіння audioserver — переприєднати. */
+    /**
+     * Сторож: перевіряє живість ефекту ДІЛОМ, а не питанням.
+     *
+     * Після перезапуску audioserver хендл стає мертвим, але `getEnabled()` цього не показує:
+     * він повертає закешоване значення й не кидає виняток. Єдине, що справді падає, — ЗАПИС
+     * параметра. Тому щотика перезаписуємо смуги: якщо хоч одна відмовила — ефект мертвий,
+     * переприєднуємось. Шість ідемпотентних записів раз на 5 с нічого не коштують, зате
+     * «відвалився й мовчить» стає неможливим.
+     */
     private static synchronized void tick() {
         try {
-            boolean alive = dp != null || eqFallback != null;
-            if (!alive) {
+            if (dp == null && eqFallback == null) {
                 attach();
                 notifyChanged();
                 return;
             }
             if (dp != null) {
-                if (wanted && !dp.getEnabled()) {
-                    dp.setEnabled(true);
-                    applyDynamics(dp);
-                    notifyChanged();
-                }
-            } else if (wanted && !eqFallback.getEnabled()) {
-                eqFallback.setEnabled(true);
+                if (wanted) dp.setEnabled(true);
+                applyDynamics(dp);              // проба живності = сам запис
+            } else {
+                if (wanted) eqFallback.setEnabled(true);
                 applyFallback();
-                notifyChanged();
             }
         } catch (Throwable t) {
-            // сюди потрапляємо, коли audioserver перезапустився і хендл став мертвий
+            // хендл мертвий (audioserver перезапустився або ефект знято системою)
             Log.w(TAG, "сторож переприєднує: " + t);
+            releaseQuietly();
             attach();
             notifyChanged();
         }
