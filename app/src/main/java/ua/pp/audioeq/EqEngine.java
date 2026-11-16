@@ -69,9 +69,10 @@ public final class EqEngine {
             if (am == null) return;
             am.registerAudioPlaybackCallback(new AudioManager.AudioPlaybackCallback() {
                 @Override public void onPlaybackConfigChanged(List<AudioPlaybackConfiguration> configs) {
-                    for (AudioPlaybackConfiguration c : configs) {
-                        if (c.isActive()) { verify(); return; }
-                    }
+                    // isActive() — прихований API (падає на targetSdk 34), тому не фільтруємо за
+                    // станом: будь-яка зміна в списку програвачів = привід один раз перевірити
+                    // живість. Подія рідка, запис один — флеш не турбуємо.
+                    if (!configs.isEmpty()) verify();
                 }
             }, handler);
         } catch (Throwable t) {
