@@ -23,10 +23,13 @@ public class MainActivity extends Activity {
     private static final int ACCENT = Color.parseColor("#2FA360");
     private static final int DIM = Color.parseColor("#8A9099");
 
+    /** Межі смуг: -12…+12 дБ з кроком 0.1 дБ — стільки дає EqBand у фреймворку. */
+    private static final float MIN_DB = -12f;
+    private static final float MAX_DB = 12f;
+    private static final int STEPS = (int) ((MAX_DB - MIN_DB) * 10);
+
     private LinearLayout bandsBox;
     private TextView status;
-    private final TextView[] valueViews = new TextView[16];
-    private final SeekBar[] sliders = new SeekBar[16];
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -86,12 +89,11 @@ public class MainActivity extends Activity {
         return root;
     }
 
-    /** Смуги будуємо з живого ефекту: їх кількість і діапазон задає сама система. */
+    /** Смуги малюємо зі стану рушія: частоти фіксовані, значення — з памʼяті. */
     private void rebuildBands() {
         bandsBox.removeAllViews();
         int n = EqEngine.bandCount();
-        short[] r = EqEngine.bandRange();
-        for (int i = 0; i < n && i < sliders.length; i++) {
+        for (int i = 0; i < n; i++) {
             final int idx = i;
 
             LinearLayout row = new LinearLayout(this);
@@ -103,8 +105,8 @@ public class MainActivity extends Activity {
             head.setGravity(Gravity.CENTER_VERTICAL);
 
             TextView name = new TextView(this);
-            int hz = EqEngine.centerFreq(idx);
-            name.setText(hz >= 1000 ? String.format("%.1f кГц", hz / 1000f) : hz + " Гц");
+            float hz = EqEngine.freqOf(idx);
+            name.setText(hz >= 1000 ? String.format("%.1f кГц", hz / 1000f) : (int) hz + " Гц");
             name.setTextColor(FG);
             name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
             name.setLayoutParams(new LinearLayout.LayoutParams(0,
@@ -114,18 +116,18 @@ public class MainActivity extends Activity {
             TextView value = new TextView(this);
             value.setTextColor(ACCENT);
             value.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-            value.setText(dbText(EqEngine.levelOf(idx)));
+            value.setText(dbText(EqEngine.gainOf(idx)));
             head.addView(value);
 
             SeekBar bar = new SeekBar(this);
-            bar.setMax(r[1] - r[0]);
-            bar.setProgress(EqEngine.levelOf(idx) - r[0]);
+            bar.setMax(STEPS);
+            bar.setProgress(toProgress(EqEngine.gainOf(idx)));
             bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override public void onProgressChanged(SeekBar sb, int p, boolean fromUser) {
                     if (!fromUser) return;
-                    short level = (short) (r[0] + p);
-                    EqEngine.setLevel(idx, level);
-                    value.setText(dbText(level));
+                    float db = fromProgress(p);
+                    EqEngine.setGain(idx, db);
+                    value.setText(dbText(db));
                 }
                 @Override public void onStartTrackingTouch(SeekBar sb) { }
                 @Override public void onStopTrackingTouch(SeekBar sb) { }
@@ -134,22 +136,26 @@ public class MainActivity extends Activity {
             row.addView(head);
             row.addView(bar, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-
             bandsBox.addView(row);
-            sliders[idx] = bar;
-            valueViews[idx] = value;
         }
     }
 
-    private static String dbText(short level) {
-        float db = level / 100f;                 // ефект працює в 1/100 дБ
+    private static int toProgress(float db) {
+        return Math.round((db - MIN_DB) * 10);
+    }
+
+    private static float fromProgress(int p) {
+        return MIN_DB + p / 10f;
+    }
+
+    private static String dbText(float db) {
         return String.format("%+.1f дБ", db);
     }
 
     private void refreshStatus() {
         if (status == null) return;
         if (EqEngine.isAlive()) {
-            status.setText("Активний · " + EqEngine.bandCount() + " смуг · системний вихід");
+            status.setText("Активний · " + EqEngine.engineName() + " · системний вихід");
             status.setTextColor(DIM);
         } else {
             String err = EqEngine.lastError();
