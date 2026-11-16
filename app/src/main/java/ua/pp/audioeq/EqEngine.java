@@ -236,24 +236,34 @@ public final class EqEngine {
     static synchronized void setGain(int i, float db) {
         if (i < 0 || i >= BANDS) return;
         gains[i] = clampDb(db);
-        try {
-            if (dp != null) applyDynamics(dp);
-            else applyFallback();
-        } catch (Throwable t) {
-            Log.w(TAG, "setGain: " + t);
-        }
+        // Відмова запису = ефект мертвий. Це найшвидший і найточніший тригер: користувач саме
+        // зараз тягне смугу, тож переприєднуємось і одразу застосовуємо — без таймерів.
+        if (!writeLevels()) recover();
         saveLevels();
     }
 
     static synchronized void setFlat() {
         for (int i = 0; i < BANDS; i++) gains[i] = 0f;
-        try {
-            if (dp != null) applyDynamics(dp);
-            else applyFallback();
-        } catch (Throwable t) {
-            Log.w(TAG, "setFlat: " + t);
-        }
+        if (!writeLevels()) recover();
         saveLevels();
+    }
+
+    /** Записати рівні в живий ефект. false = ефект мертвий (запис відмовив). */
+    private static boolean writeLevels() {
+        try {
+            applyLevelsToLive();
+            return true;
+        } catch (Throwable t) {
+            Log.w(TAG, "запис відмовив: " + t);
+            return false;
+        }
+    }
+
+    /** Переприєднатись і застосувати поточні рівні. */
+    private static void recover() {
+        releaseQuietly();
+        attach();
+        notifyChanged();
     }
 
     static synchronized boolean isWanted() { return wanted; }
