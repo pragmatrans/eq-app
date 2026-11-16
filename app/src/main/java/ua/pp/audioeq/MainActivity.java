@@ -107,7 +107,8 @@ public class MainActivity extends Activity {
 
             TextView name = new TextView(this);
             float hz = EqEngine.freqOf(idx);
-            name.setText(hz >= 1000 ? String.format("%.1f кГц", hz / 1000f) : (int) hz + " Гц");
+            // Підписи як у Dolby: «141», «1k», «19k» — без «Гц/кГц», щоб не переучуватись
+            name.setText(hz >= 1000 ? Math.round(hz / 1000f) + "k" : String.valueOf((int) hz));
             name.setTextColor(FG);
             name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
             name.setLayoutParams(new LinearLayout.LayoutParams(0,

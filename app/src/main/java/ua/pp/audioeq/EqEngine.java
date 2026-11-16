@@ -35,15 +35,22 @@ public final class EqEngine {
     private static final String TAG = "AudioEq";
     private static final String PREFS = "eq";
     private static final String KEY_LEVELS = "levels";
-    private static final int BANDS = 6;
-    /** Частоти смуг, Гц: від басу до повітря. */
-    private static final float[] FREQS = {60f, 230f, 910f, 2300f, 5000f, 12000f};
+    /**
+     * Ті самі смуги, що в Dolby Atmos (набір DAX 20-band, підмножина з 14, яку видно в UI) —
+     * щоб не переучуватись: ті самі частоти, ті самі позиції.
+     */
+    private static final float[] FREQS = {
+            141f, 234f, 328f, 469f, 656f, 844f, 1031f,
+            3000f, 3750f, 4688f, 7125f, 11250f, 13875f, 19688f
+    };
+    private static final int BANDS = FREQS.length;
 
     private static DynamicsProcessing dp;
     private static Equalizer eqFallback;
     private static SharedPreferences prefs;
     private static Handler handler;
     private static final float[] gains = new float[BANDS];   // дБ; 0 = пласко
+    private static int activeBands = BANDS;                  // скільки смуг реально прийняв ефект
     private static boolean wanted = true;
     private static String lastError = "";
     private static Runnable onChange;
@@ -95,12 +102,21 @@ public final class EqEngine {
     }
 
     private static boolean attachDynamics() {
+        // Ефект має власну межу на кількість смуг. Пробуємо від повного набору вниз: краще
+        // 14 як у Dolby, але краще 10 робочих, ніж 14, які не створюються.
+        for (int n : new int[]{BANDS, 12, 10, 8, 6}) {
+            if (attachDynamicsWith(n)) { activeBands = n; return true; }
+        }
+        return false;
+    }
+
+    private static boolean attachDynamicsWith(int bands) {
         try {
             DynamicsProcessing.Config.Builder b = new DynamicsProcessing.Config.Builder(
                     DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
                     1,          // вхідних каналів
                     true,       // preEq
-                    BANDS,
+                    bands,
                     false, 0,   // mbc
                     false, 0,   // postEq
                     false);     // limiter
@@ -142,7 +158,7 @@ public final class EqEngine {
     }
 
     private static void applyDynamics(DynamicsProcessing fx) {
-        for (int i = 0; i < BANDS; i++) {
+        for (int i = 0; i < activeBands; i++) {
             DynamicsProcessing.EqBand band =
                     new DynamicsProcessing.EqBand(true, FREQS[i], clampDb(gains[i]));
             fx.setPreEqBandAllChannelsTo(i, band);
@@ -227,7 +243,7 @@ public final class EqEngine {
 
     // ---- API для UI ----
 
-    static int bandCount() { return BANDS; }
+    static int bandCount() { return activeBands; }
 
     static float freqOf(int i) { return FREQS[i]; }
 
