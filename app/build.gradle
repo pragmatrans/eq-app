@@ -1,0 +1,38 @@
+plugins {
+    id 'com.android.application' version '8.5.2'
+}
+
+android {
+    namespace 'ua.pp.audioeq'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "ua.pp.audioeq"
+        minSdk 29
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(System.getenv('KS_FILE') ?: 'keystore.p12')
+            storePassword System.getenv('KS_PASS') ?: ''
+            keyAlias System.getenv('KEY_ALIAS') ?: 'poe'
+            keyPassword System.getenv('KEY_PASS') ?: ''
+            storeType 'PKCS12'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

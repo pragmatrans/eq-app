@@ -1,0 +1,40 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ubuntu-latest уже має Android SDK; потрібної платформи може не бути
+      - name: android sdk
+        run: |
+          CT=$(ls -d "$ANDROID_HOME"/cmdline-tools/* 2>/dev/null | head -1)
+          echo "cmdline-tools: $CT"
+          yes 2>/dev/null | "$CT/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$CT/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null || true
+
+      # Перша версія підписується debug-ключем: застосунок особистий, ставимо з adb,
+      # у стор не йде. Якщо знадобляться оновлення поверх — зробимо власний keystore.
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      - name: assembleDebug
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eq-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
