@@ -15,6 +15,15 @@ android {
     }
 
     signingConfigs {
+        // Явний ключ для CI: докладатись на «магію» debug.keystore не варто — AGP на раннері
+        // може взяти інший шлях, і кожна збірка виходить з іншим підписом.
+        ci {
+            storeFile file(System.getenv('KS_FILE') ?: 'ci.keystore')
+            storePassword System.getenv('KS_PASS') ?: 'android'
+            keyAlias System.getenv('KEY_ALIAS') ?: 'androiddebugkey'
+            keyPassword System.getenv('KEY_PASS') ?: 'android'
+            storeType 'JKS'
+        }
         release {
             storeFile file(System.getenv('KS_FILE') ?: 'keystore.p12')
             storePassword System.getenv('KS_PASS') ?: ''
@@ -25,6 +34,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig signingConfigs.ci
+        }
         release {
             minifyEnabled false
             signingConfig signingConfigs.release
