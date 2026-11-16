@@ -73,8 +73,7 @@ public final class EqEngine {
                     BANDS,
                     false, 0,   // mbc
                     false, 0,   // postEq
-                    false, 0,   // limiter
-                    false);     // preferredFrameDuration
+                    false);     // limiter
             DynamicsProcessing candidate = new DynamicsProcessing(0, 0, b.build());
             candidate.setEnabled(wanted);
             applyDynamics(candidate);
